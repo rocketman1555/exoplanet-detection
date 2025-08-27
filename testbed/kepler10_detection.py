@@ -6,7 +6,7 @@ Author: Patrick Collins
 # === Imports ===
 import numpy as np
 import matplotlib.pyplot as plt
-from lightkurve import search_lightcurve
+from lightkurve import search_lightcurve, LightCurveCollection
 from astropy.timeseries import BoxLeastSquares
 
 # === Step 1: Load Data ===
@@ -16,11 +16,23 @@ def load_lightcurve(target="Kepler-10", mission="Kepler"):
     target: string, e.g. "Kepler-10"
     mission: "Kepler" or "TESS"
     """
-    #lc_file = search_lightcurvefile(target, mission=mission).download()
-    #lc = lc_file.PDCSAP_FLUX.remove_nans()   # Use pre-processed flux
+    # Extract the light curve files
     lc_search_results = search_lightcurve(target, mission=mission, exptime=1800)
-    lc = lc_search_results[1].download()
-    lc = lc.remove_nans()
+
+    # Remove NaNs, normalize, and append the light curve files together
+    lc_combined = []
+    for i in range(0, min(20, len(lc_search_results))):
+        lc = lc_search_results[i].download()
+        lc = lc.remove_nans()
+        lc = lc.normalize()
+        lc_combined.append(lc)
+    
+    # Arrange the light curve files into a collection, stitch them together
+    lcc = LightCurveCollection(lc_combined)
+    lc = lcc.stitch()
+    
+    print(lc)
+    
     return lc.time.value, lc.flux.value
 
 # === Step 2: Preprocess ===
@@ -38,8 +50,8 @@ def detect_transits(time, flux):
     Run a Box Least Squares periodogram to detect transit candidates.
     """
     # Define trial periods (days)
-    periods = np.linspace(0.5, 30, 10000)
-    durations = np.linspace(0.05, 0.2, 10)   # in days
+    periods = np.linspace(0.5, 20, 30000)
+    durations = np.linspace(0.05, 0.3, 25)   # in days
 
     bls = BoxLeastSquares(time, flux)
     results = bls.power(periods, durations)
@@ -71,7 +83,7 @@ if __name__ == "__main__":
     time, flux = load_lightcurve("Kepler-10")
 
     # Preprocess
-    time, flux = preprocess_lightcurve(time, flux)
+    #time, flux = preprocess_lightcurve(time, flux)
 
     # Detect
     period, t0, duration, results = detect_transits(time, flux)
